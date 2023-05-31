@@ -27,6 +27,10 @@ def fileStream (filename : System.FilePath) : IO (Option IO.FS.Stream) := do
 def process (exitCode : UInt32) (args : List String) : IO UInt32 := do
   match args with
   | [] => pure exitCode
+  | "--help" :: _ =>
+    let stdout ← IO.getStdout
+    stdout.putStrLn "usage: feline [-] [file ...]"
+    pure exitCode
   | "-" :: args =>
     -- Just as with if, each branch of a match that is used as a statement in a
     -- do is implicitly provided with its own do.
