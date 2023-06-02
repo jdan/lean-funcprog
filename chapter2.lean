@@ -26,4 +26,23 @@ def nTimes (action : IO Unit) : Nat → IO Unit
 
 def main₃ := nTimes (IO.println "Hello, world!") 3
 
-def main := main₃
+def main₄ : IO Unit := do
+  (← IO.getStdout).putStrLn "Hello, world!!"
+
+-- Watch out for execution order with this convenience!
+def getNumA : IO Nat := do
+  (← IO.getStdout).putStrLn "A"
+  pure 5
+
+def getNumB : IO Nat := do
+  (← IO.getStdout).putStrLn "B"
+  pure 6
+
+def main₅ : IO Unit := do
+  let a : Nat := if (← getNumA) == 5 then 0 else (← getNumB)
+  (← IO.getStdout).putStrLn s!"Is {a}!"
+-- A
+-- B
+-- Is 0!
+
+def main := main₅
