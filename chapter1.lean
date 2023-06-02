@@ -1,3 +1,4 @@
+-- Chapter 1 --
 def add1 (n : Nat) : Nat := n + 1
 
 def maximum (n : Nat) (k : Nat) : Nat :=
@@ -274,3 +275,87 @@ def Inline.string?₂ (inline : Inline) : Option String :=
 #eval (⟨1, 2⟩ : Point)
 
 #eval s!"three fives is {NewNamespace.triple 5}"
+
+-- Chapter 2 --
+def main₁ : IO Unit := IO.println "Hello, world!"
+
+-- lean --run chapter2.lean
+-- Hello, world!
+
+def main₂ : IO Unit := do
+  let stdin ← IO.getStdin
+  let stdout ← IO.getStdout
+
+  stdout.putStrLn "How would you like to be addressed?"
+  -- Using an arrow means that the value of the expression is an IO action that
+  -- should be executed, with the result of the action saved in the local
+  -- variable.
+  let input ← stdin.getLine
+  let name := input.dropRightWhile Char.isWhitespace
+
+  stdout.putStrLn s!"Hello, {name}!"
+
+-- #eval "Hello!!!".dropRightWhile (· == '!')
+
+def nTimes (action : IO Unit) : Nat → IO Unit
+  | 0 => pure ()
+  | n + 1 => do
+    action
+    nTimes action n
+
+def main₃ := nTimes (IO.println "Hello, world!") 3
+
+def main₄ : IO Unit := do
+  (← IO.getStdout).putStrLn "Hello, world!!"
+
+-- Watch out for execution order with this convenience!
+def getNumA : IO Nat := do
+  (← IO.getStdout).putStrLn "A"
+  pure 5
+
+def getNumB : IO Nat := do
+  (← IO.getStdout).putStrLn "B"
+  pure 6
+
+def main₅ : IO Unit := do
+  let a : Nat := if (← getNumA) == 5 then 0 else (← getNumB)
+  (← IO.getStdout).putStrLn s!"Is {a}!"
+-- A
+-- B
+-- Is 0!
+
+def main := main₅
+
+-- Chapter 3 --
+def onePlusOneIsTwo : 1 + 1 = 2 := rfl
+
+def OnePlusOneIsTwo : Prop := 1 + 1 = 2
+theorem onePlusOneIsTwo₂ : OnePlusOneIsTwo := rfl
+
+theorem onePlusOneIsTwo₃ : 1 + 1 = 2 := by
+  simp
+
+theorem addAndAppend : 1 + 1 = 2 ∧ "Str".append "ing" = "String" := by simp
+
+theorem andImpliesOr : A ∧ B → A ∨ B :=
+  fun andEvidence =>
+    match andEvidence with
+    | And.intro a _ => Or.inl a
+
+def third (xs : List α) (ok : xs.length > 2) : α := xs[2]
+#eval third [1, 2, 3] (by simp)
+
+-- exercises
+theorem twoPlusThreeIsFive : 2 + 3 = 5 := rfl
+theorem fifteenMinusEightIsSeven : 15 - 8 = 7 := rfl
+theorem helloWorldAppend : "Hello, ".append "world!" = "Hello, world!" := rfl
+-- rfl checks =, we need simp
+theorem fiveLessThanEighteen : 5 < 18 := by simp
+
+theorem twoPlusThreeIsFive₂ : 2 + 3 = 5 := by simp
+theorem fifteenMinusEightIsSeven₂ : 15 - 8 = 7 := by simp
+theorem helloWorldAppend₂ : "Hello, ".append "world!" = "Hello, world!" := by simp
+
+def fifth (xs : List α) (ok : xs.length > 4) : α := xs[4]
+
+-- Chapter 4 --
