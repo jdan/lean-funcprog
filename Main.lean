@@ -359,3 +359,168 @@ theorem helloWorldAppend₂ : "Hello, ".append "world!" = "Hello, world!" := by 
 def fifth (xs : List α) (ok : xs.length > 4) : α := xs[4]
 
 -- Chapter 4 --
+class Plus (α : Type) where
+  plus : α → α → α
+
+instance : Plus Nat where
+  plus := Nat.add
+
+inductive Pos : Type where
+  | one : Pos
+  | succ : Pos -> Pos
+
+def seven : Pos :=
+  Pos.succ (Pos.succ (Pos.succ (Pos.succ (Pos.succ (Pos.succ Pos.one)))))
+
+def Pos.plus : Pos → Pos → Pos
+  | Pos.one, k => Pos.succ k
+  | Pos.succ n, k => Pos.succ (n.plus k)
+
+instance : Plus Pos where
+  plus := Pos.plus
+
+open Plus (plus)
+
+def fourteen : Pos := plus seven seven
+
+-- Gain access to `+`
+instance : Add Pos where
+  add := plus
+
+def fourteen₂ : Pos := seven + seven
+
+def posToString (atTop : Bool) (p : Pos) : String :=
+  let paren s := if atTop then s else "(" ++ s ++ ")"
+  match p with
+  | Pos.one => "Pos.one"
+  | Pos.succ n => paren s!"Pos.succ {posToString false n}"
+
+instance : ToString Pos where
+  toString := posToString true
+
+#eval s!"There are {seven}"
+
+-- Probably better to just convert to a Nat, which has a toString
+def Pos.toNat : Pos → Nat
+  | Pos.one => 1
+  | Pos.succ n => n.toNat + 1
+
+instance : ToString Pos where
+  toString x := toString (x.toNat)
+
+#eval s!"There are {seven}"
+
+def Pos.mul : Pos → Pos → Pos
+  | Pos.one, k => k
+  | Pos.succ n, k => k + n.mul k
+
+instance : Mul Pos where
+  mul := Pos.mul
+
+#eval seven * seven
+
+inductive LT4 where
+  | zero
+  | one
+  | two
+  | three
+deriving Repr
+
+instance : OfNat LT4 0 where
+  ofNat := LT4.zero
+
+instance : OfNat LT4 1 where
+  ofNat := LT4.one
+
+instance : OfNat LT4 2 where
+  ofNat := LT4.two
+
+instance : OfNat LT4 3 where
+  ofNat := LT4.three
+
+#eval (3 : LT4)
+-- #eval (4 : LT4)
+
+instance : OfNat Pos (n + 1) where
+  ofNat :=
+    let rec natPlusOne : Nat → Pos
+      | 0 => Pos.one
+      | n + 1 => Pos.succ (natPlusOne n)
+    natPlusOne n
+
+#eval (3 : Pos)
+-- #eval (0 : Pos)
+
+structure Pos₂ where
+  succ ::
+  pred : Nat
+
+def Pos₂.plus : Pos₂ → Pos₂ → Pos₂
+  | Pos₂.succ n, Pos₂.succ m => Pos₂.succ (n + m + 1)
+
+instance : Add Pos₂ where
+  add := Pos₂.plus
+
+def nine := Pos₂.succ 3 + Pos₂.succ 4
+#eval nine.pred
+
+def Pos₂.mul : Pos₂ → Pos₂ → Pos₂
+  | Pos₂.succ n, Pos₂.succ m => Pos₂.succ (n * m + n + m)
+
+instance : Mul Pos₂ where
+  mul := Pos₂.mul
+
+def thirtyThree := Pos₂.succ 2 * Pos₂.succ 10
+#eval thirtyThree.pred
+
+def Pos₂.toNat : Pos₂ → Nat
+  | Pos₂.succ n => n + 1
+
+def pos₂ToString : Pos₂ → String
+  | Pos₂.succ n => toString (n + 1)
+
+instance : ToString Pos₂ where
+  toString := pos₂ToString
+
+#eval thirtyThree
+
+instance : OfNat Pos₂ (n + 1) where
+  ofNat := Pos₂.succ n
+
+#eval (12 : Pos₂)
+-- #eval (0 : Pos₂)   -- so cool lol
+
+structure Even where
+  double ::
+  half : Nat
+
+def fourtyTwo : Even := Even.double 21
+
+def Even.add : Even → Even → Even
+  | Even.double n, Even.double m => Even.double (n + m)
+instance : Add Even where
+  add := Even.add
+
+def eightyFour := fourtyTwo + fourtyTwo
+
+def Even.mul : Even → Even → Even
+  | Even.double n, Even.double m => Even.double (n * m)
+instance : Mul Even where
+  mul := Even.mul
+
+def eightHundredEightyTwo := fourtyTwo * fourtyTwo
+#eval eightHundredEightyTwo.half
+
+def evenToString : Even → String
+  | Even.double n => toString (n * 2)
+instance : ToString Even where
+  toString := evenToString
+
+#eval eightHundredEightyTwo
+
+def Even.toNat : Even → Nat
+  | Even.double n => n * 2
+
+#eval (fourtyTwo : Even)
+
+-- can't do OfNat quite yet, because we can't destruct n * 2
