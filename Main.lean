@@ -490,37 +490,62 @@ instance : OfNat Pos₂ (n + 1) where
 #eval (12 : Pos₂)
 -- #eval (0 : Pos₂)   -- so cool lol
 
-structure Even where
-  double ::
-  half : Nat
+inductive Even where
+  | zero
+  | plusTwo : Even → Even
 
-def fourtyTwo : Even := Even.double 21
+def two := Even.plusTwo Even.zero
 
 def Even.add : Even → Even → Even
-  | Even.double n, Even.double m => Even.double (n + m)
+  | Even.zero, m => m
+  | n, Even.zero => n
+  | Even.plusTwo n, Even.plusTwo m => Even.plusTwo (Even.plusTwo (Even.add n m))
 instance : Add Even where
   add := Even.add
 
-def eightyFour := fourtyTwo + fourtyTwo
+def four := two + two
 
 def Even.mul : Even → Even → Even
-  | Even.double n, Even.double m => Even.double (n * m)
+  | Even.zero, _ => Even.zero
+  | _, Even.zero => Even.zero
+  | Even.plusTwo n, Even.plusTwo m =>
+    -- (n + 2)(m + 2) = nm + 2n + 2m + 4
+    Even.mul n m + (Even.add n n) + (Even.add m m) + four
 instance : Mul Even where
   mul := Even.mul
 
-def eightHundredEightyTwo := fourtyTwo * fourtyTwo
-#eval eightHundredEightyTwo.half
-
-def evenToString : Even → String
-  | Even.double n => toString (n * 2)
-instance : ToString Even where
-  toString := evenToString
-
-#eval eightHundredEightyTwo
+def sixteen := four * four
 
 def Even.toNat : Even → Nat
-  | Even.double n => n * 2
+  | Even.zero => 0
+  | Even.plusTwo n => n.toNat + 2
 
-#eval (fourtyTwo : Even)
+instance : ToString Even where
+  toString n := toString (Even.toNat n)
+
+#eval sixteen
 
 -- can't do OfNat quite yet, because we can't destruct n * 2
+
+def List.sum [Add α] [OfNat α 0] : List α → α
+  | [] => 0
+  | x :: xs => x + xs.sum
+
+#eval [1, 2, 3, 4].sum
+-- #eval ([1, 2, 3, 4] : List Pos).sum
+
+instance [Add α] : Add (PPoint α) where
+  add p1 p2 := { x := p1.x + p2.x, y := p1.y + p2.y }
+
+instance : OfNat Even Nat.zero where
+  ofNat := Even.zero
+
+#eval (0 : Even)
+
+instance [OfNat Even n] : OfNat Even (n + 2) where
+  ofNat := Even.plusTwo (OfNat.ofNat n)
+
+#eval (42 : Even)
+-- #eval (3 : Even)
+-- #eval (88888 : Even)
+-- maximum number of heartbeats (20000) has been reached
