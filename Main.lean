@@ -659,3 +659,103 @@ instance : GetElem (List α) Pos α (fun list n => list.length > n.toNat) where
 instance : GetElem (PPoint α) Bool α (fun _ _ => true) where
   getElem (p : PPoint α) (i : Bool) _ :=
     if ¬i then p.x else p.y
+
+def Pos.comp : Pos → Pos → Ordering
+  | Pos.one, Pos.one => Ordering.eq
+  | Pos.one, _ => Ordering.lt
+  | _, Pos.one => Ordering.gt
+  | Pos.succ n, Pos.succ k => comp n k
+
+instance : Ord Pos where
+  compare := Pos.comp
+
+def hashPos : Pos → UInt64
+  | Pos.one => 1
+  | Pos.succ n => mixHash 1 (hashPos n)
+
+instance : Hashable Pos where
+  hash := hashPos
+
+instance [Hashable α] : Hashable (NonEmptyList α) where
+  hash xs := mixHash (hash xs.head) (hash xs.tail)
+
+inductive BinTree (α : Type) where
+  | leaf : BinTree α
+  | branch : BinTree α → α → BinTree α → BinTree α
+
+def eqBinTree [BEq α] : BinTree α → BinTree α → Bool
+  | BinTree.leaf, BinTree.leaf => true
+  | BinTree.branch l x r, BinTree.branch l₂ x₂ r₂ =>
+    x == x₂ && eqBinTree l l₂ && eqBinTree r r₂
+  | _, _ => false
+
+def hashBinTree [Hashable α] : BinTree α → UInt64
+  | BinTree.leaf => 0
+  | BinTree.branch l x r =>
+    mixHash 1 (mixHash (hashBinTree l) (mixHash (hash x) (hashBinTree r)))
+
+instance [Hashable α] : Hashable (BinTree α) where
+  hash := hashBinTree
+
+-- We can add a few standard classes easily
+deriving instance BEq, Hashable, Repr for NonEmptyList
+
+instance : Append (NonEmptyList α) where
+  append xs ys := {
+    head := xs.head,
+    tail := xs.tail ++ ys.head :: ys.tail
+  }
+
+#eval idahoSpiders ++ idahoSpiders
+
+instance : HAppend (NonEmptyList α) (List α) (NonEmptyList α) where
+  hAppend xs ys := {
+    head := xs.head,
+    tail := xs.tail ++ ys
+  }
+
+#eval idahoSpiders ++ ["Trapdoor Spider"]
+
+#eval (· + 5) <$> [1, 2, 3]
+
+instance : Functor NonEmptyList where
+  map f xs := {
+    head := f xs.head,
+    tail := f <$> xs.tail
+  }
+
+instance : Functor PPoint where
+  map f p := {
+    x := f p.x,
+    y := f p.y
+  }
+
+def concat [Append α] (xs : NonEmptyList α) : α :=
+  let rec catList (start : α) : List α → α
+    | [] => start
+    | z :: zs => catList (start ++ z) zs
+  catList xs.head xs.tail
+
+instance : HAppend (List α) (NonEmptyList α) (NonEmptyList α) where
+  hAppend xs ys :=
+    match xs with
+      | [] => ys
+      | z :: zs => {
+        head := z,
+        tail := zs ++ ys.head :: ys.tail
+      }
+
+#eval (["Trapdoor Spider"] ++ idahoSpiders)
+#eval (([] : List String) ++ idahoSpiders)
+
+deriving instance BEq, Hashable, Repr for BinTree
+
+def BinTree.map (f : α → β) : BinTree α → BinTree β
+  | BinTree.leaf => BinTree.leaf
+  | BinTree.branch l x r =>
+    BinTree.branch (BinTree.map f l) (f x) (BinTree.map f r)
+
+instance : Functor BinTree where
+  map := BinTree.map
+
+#eval (· + 5) <$> BinTree.branch BinTree.leaf 3 BinTree.leaf
