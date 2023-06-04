@@ -549,3 +549,69 @@ instance [OfNat Even n] : OfNat Even (n + 2) where
 -- #eval (3 : Even)
 -- #eval (88888 : Even)
 -- maximum number of heartbeats (20000) has been reached
+
+def addNatPos : Nat → Pos → Pos
+  | 0, p => p
+  | n + 1, p => Pos.succ (addNatPos n p)
+
+def addPosNat : Pos → Nat → Pos
+  | p, 0 => p
+  | p, n + 1 => Pos.succ (addPosNat p n)
+
+-- Sadly these cannot be used with Add
+#check @Add.add
+-- {α : Type u_1} → [self : Add α] → α → α → α
+
+-- we can use HAdd, though!
+#check @HAdd.hAdd
+-- {α : Type u_1} → {β : Type u_2} → {γ : outParam (Type u_3)} → [self : HAdd α β γ] → α → β → γ
+
+instance : HAdd Nat Pos Pos where
+  hAdd := addNatPos
+instance : HAdd Pos Nat Pos where
+  hAdd := addPosNat
+
+#eval (3 : Pos) + (5 : Nat)
+
+-- outParam!
+class HPlus (α : Type) (β : Type) (γ : outParam Type) where
+  hPlus : α → β → γ
+
+instance : HPlus Nat Pos Pos where
+  hPlus := addNatPos
+instance : HPlus Pos Nat Pos where
+  hPlus := addPosNat
+
+#eval HPlus.hPlus (3 : Pos) (5 : Nat)
+
+instance [Add α] : HPlus α α α where
+  hPlus := Add.add
+
+#eval HPlus.hPlus (3 : Pos) (5 : Nat)
+#check HPlus.hPlus (3 : Pos) (5 : Nat)
+-- HPlus.hPlus 3 5 : Pos
+#check HPlus.hPlus (3 : Pos)
+-- HPlus.hPlus 3 : ?m.148395 → ?m.148397
+-- weird!!
+
+@[default_instance]
+instance [Add α] : HPlus α α α where
+  hPlus := Add.add
+
+#check HPlus.hPlus (3 : Pos)
+-- HPlus.hPlus 3 : Pos → Pos
+
+instance [Mul α]: HMul (PPoint α) α (PPoint α) where
+  hMul p n := { x := p.x * n, y := p.y * n }
+
+#eval ({ x := 3, y := 4 } : PPoint Nat) * 5
+#eval ({ x := 2.5, y := 3.7 } : PPoint Float) * 2.0
+#check HMul.hMul ({ x := 3, y := 4 } : PPoint Nat)
+-- HMul.hMul { x := 3, y := 4 } : ?m.154201 → ?m.154203
+
+@[default_instance]
+instance [Mul α]: HMul (PPoint α) α (PPoint α) where
+  hMul p n := { x := p.x * n, y := p.y * n }
+
+#check HMul.hMul ({ x := 3, y := 4 } : PPoint Nat)
+-- HMul.hMul { x := 3, y := 4 } : Nat → PPoint Nat
