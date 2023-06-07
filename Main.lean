@@ -759,3 +759,132 @@ instance : Functor BinTree where
   map := BinTree.map
 
 #eval (· + 5) <$> BinTree.branch BinTree.leaf 3 BinTree.leaf
+
+instance : Coe Pos Nat where
+  coe x := x.toNat
+
+#eval [1, 2, 3, 4].drop (2 : Pos)
+
+def oneInt : Int := Pos.one
+-- This is possible because Coe Nat Int exists!
+
+inductive A where | a
+inductive B where | b deriving Repr
+instance : Coe A B where
+  coe _ := B.b
+instance : Coe B A where
+  coe _ := A.a
+instance : Coe Unit A where
+  coe _ := A.a
+
+def coercedToB : B := ()
+#eval coercedToB
+
+def List.last?₂ : List α → Option α
+  | [] => none
+  | [x] => x  -- no need to use `some x`!
+  | _ :: x :: xs => last?₂ (x :: xs)
+
+def perhapsPerhapsPerhaps : Option (Option (Option String)) :=
+  "Please don't tell me"
+
+def perhapsPerhapsPerhapsNat : Option (Option (Option Nat)) :=
+  (392 : Nat)
+
+def perhapsPerhapsPerhapsNat₂ : Option (Option (Option Nat)) :=
+  ↑(392 : Nat)
+
+instance : Coe (NonEmptyList α) (List α) where
+  coe
+    | { head := x, tail := xs } => x :: xs
+
+instance : CoeDep (List α) (x :: xs) (NonEmptyList α) where
+  coe := { head := x, tail := xs }
+
+#eval ([1, 2, 3] : NonEmptyList Nat)
+--#eval ([] : NonEmptyList Nat)
+
+structure Monoid where
+  Carrier : Type
+  neutral : Carrier
+  op : Carrier → Carrier → Carrier
+
+def natMulMonoid : Monoid :=
+  { Carrier := Nat, neutral := 1, op := (· * ·) }
+
+def natAddMonoid : Monoid :=
+  { Carrier := Nat, neutral := 0, op := (· + ·) }
+
+def stringMonoid : Monoid :=
+  { Carrier := String, neutral := "", op := (· ++ ·) }
+
+def listMonoid (α : Type) : Monoid :=
+  { Carrier := List α, neutral := [], op := (· ++ ·) }
+
+def foldMap (M : Monoid) (f : α → M.Carrier) (xs : List α) : M.Carrier :=
+  let rec go (soFar : M.Carrier) : List α → M.Carrier
+    | [] => soFar
+    | y :: ys => go (M.op soFar (f y)) ys
+  go M.neutral xs
+
+instance : CoeSort Monoid Type where
+  coe m := m.Carrier
+
+-- now we can avoid M.Carrier
+def foldMap₂ (M : Monoid) (f : α → M) (xs : List α) : M :=
+  let rec go (soFar : M) : List α → M
+    | [] => soFar
+    | y :: ys => go (M.op soFar (f y)) ys
+  go M.neutral xs
+
+-- coerce booleans into `= true` propositions
+instance : CoeSort Bool Prop where
+  coe b := b = true
+
+-- coerce into functions with CoeFun
+structure Adder where howMuch : Nat
+def add5 : Adder := ⟨5⟩
+
+instance : CoeFun Adder (fun _ => Nat → Nat ) where
+  coe a := (· + a.howMuch)
+
+#eval add5 3
+
+inductive JSON where
+  | true : JSON
+  | false : JSON
+  | null : JSON
+  | string : String → JSON
+  | number : Float → JSON
+  | object : List (String × JSON) → JSON
+  | array : List JSON → JSON
+deriving Repr
+
+structure Serializer where
+  Contents : Type
+  serialize : Contents → JSON
+
+def Str₂ : Serializer :=
+  { Contents := String,
+    serialize := JSON.string
+  }
+
+instance : CoeFun Serializer (fun s => s.Contents → JSON) where
+  coe s := s.serialize
+
+def buildResponse (title : String) (R : Serializer) (record : R.Contents) : JSON :=
+  JSON.object [
+    ("title", JSON.string title),
+    ("status", JSON.number 200),
+    ("record", R record)
+  ]
+
+#eval buildResponse "Hello" Str₂ "World"
+
+-- Neat, we can write a Pos serializer as well
+def Pos' : Serializer :=
+  { Contents := Pos,
+    serialize := fun x => JSON.number (x.toNat.toFloat)
+  }
+
+#eval buildResponse "Hello" Pos' (392 : Pos)
