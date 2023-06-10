@@ -888,3 +888,41 @@ def Pos' : Serializer :=
   }
 
 #eval buildResponse "Hello" Pos' (392 : Pos)
+
+structure Tree : Type where
+  latinName : String
+  commonNames : List String
+
+-- The following syntaxes are equivalent
+def oak : Tree :=
+  ⟨"Quercus robur", ["common oak", "European oak"]⟩
+
+def birch : Tree :=
+  { latinName := "Betula pendula",
+    commonNames := ["silver birch", "qarty birch"]
+  }
+
+def sloe : Tree where
+  latinName := "Prunus spinosa"
+  commonNames := ["sloe", "blackthorn"]
+
+class Display (α : Type) where
+  displayName : α → String
+
+-- Similarly, for typeclass instances
+instance : Display Tree :=
+  ⟨Tree.latinName⟩
+
+instance : Display Tree :=
+  { displayName := Tree.latinName }
+
+instance : Display Tree where
+  displayName := Tree.latinName
+
+-- example is helpful
+example : NonEmptyList String :=
+  { head := "Sparrow",
+    tail := ["Robin", "Blackbird"]
+  }
+example (n : Nat) (k : Nat) : Bool :=
+  n + k == k + n
