@@ -1131,3 +1131,117 @@ def numberσ (t : BinTree α) : BinTree (Nat × α) :=
       helper right ~~>σ fun numberedRight =>
       okσ (BinTree.branch numberedLeft (k, x) numberedRight)
     (helper t 0).snd
+
+instance : Monad Option where
+  pure x := some x
+  bind opt next :=
+    match opt with
+    | none => none
+    | some x => next x
+
+instance : Monad (Except ε) where
+  pure x := Except.ok x
+  bind attempt next :=
+    match attempt with
+    | Except.error e => Except.error e
+    | Except.ok x => next x
+
+def firstThirdFifthSeventh₀ [Monad m] (lookup : List α → Nat → m α) (xs : List α) : m (α × α × α × α) :=
+  lookup xs 0 >>= fun first =>
+  lookup xs 2 >>= fun third =>
+  lookup xs 4 >>= fun fifth =>
+  lookup xs 6 >>= fun seventh =>
+  pure (first, third, fifth, seventh)
+
+def slowMammals : List String :=
+  ["Three-toed sloth", "Slow loris"]
+
+def fastBirds : List String := [
+  "Peregrine falcon",
+  "Golden eagle",
+  "White-throated needletail",
+  "Eurasian hobby",
+  "Frigatebird",
+  "Rock dove",
+  "Spur-winged goose",
+  "Red-breasted merganser"
+]
+
+#eval firstThirdFifthSeventh₀ (fun xs i => xs[i]?) slowMammals
+
+def getOrExcept (xs : List α) (i : Nat) : Except String α :=
+  match xs[i]? with
+  | none => Except.error s!"Index {i} not found (maximum is {xs.length - 1})"
+  | some x => Except.ok x
+
+#eval firstThirdFifthSeventh₀ getOrExcept fastBirds
+
+def mapM [Monad m] (f : α → m β) : List α → m (List β)
+  | [] => pure []
+  | x :: xs =>
+    f x >>= fun hd =>
+    mapM f xs >>= fun tl =>
+    pure (hd :: tl)
+
+instance : Monad (State σ) where
+  pure x := fun s => (s, x)
+  bind first next := fun s =>
+    let (s', x) := first s
+    next x s'
+
+def increment (howMuch : Int) : State Int Int :=
+  getσ >>= fun i =>
+  set (i + howMuch) >>= fun () =>
+  pure i
+
+#eval mapM increment [1, 2, 3, 4, 5] 0
+
+instance : Monad (WithLog logged) where
+  pure x := { log := [], val := x }
+  bind first next :=
+    let { log := firstLog, val := firstVal } := first
+    let { log := nextLog, val := nextVal } := next firstVal
+    { log := firstLog ++ nextLog, val := nextVal }
+
+def saveIfEven (i : Int) : WithLog Int Int :=
+  (if isEven i then
+    save i
+  else pure ()) >>= fun () =>
+  pure i
+
+deriving instance Repr for WithLog
+
+#eval mapM saveIfEven [1, 2, 3, 4, 5]
+
+def Id₂ (t : Type) : Type := t
+instance : Monad Id where
+  pure x := x
+  bind x f := f x
+
+-- without the (m := Id) hint, the compiler cannot infer it
+#eval mapM (m := Id) (· + 1) [1, 2, 3, 4, 5]
+
+def BinTree.mapM [Monad m] (f : α → m β) : BinTree α → m (BinTree β)
+  | BinTree.leaf => pure BinTree.leaf
+  | BinTree.branch left x right =>
+    -- pre-order traversal
+    f x >>= fun x' =>
+    BinTree.mapM f left >>= fun left' =>
+    BinTree.mapM f right >>= fun right' =>
+    pure (BinTree.branch left' x' right')
+
+#eval BinTree.mapM (m := Id) (· + 1) (BinTree.branch BinTree.leaf 1 BinTree.leaf)
+#eval BinTree.mapM saveIfEven (BinTree.branch BinTree.leaf 1 BinTree.leaf)
+#eval BinTree.mapM saveIfEven (BinTree.branch (BinTree.branch BinTree.leaf 4 BinTree.leaf) 2 BinTree.leaf)
+
+instance : Monad Option where
+  pure x := some x
+  bind _ _ := none
+
+theorem violatesMonadContract :
+  ¬ ∀ (α β : Type) (f : α → Option β) (x : α),
+  bind (pure x) f = f x :=
+by
+  intro h
+  have h' := h Nat Nat (fun x => some (x + 1)) 0
+  simp [bind] at h'
