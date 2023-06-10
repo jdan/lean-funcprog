@@ -926,3 +926,208 @@ example : NonEmptyList String :=
   }
 example (n : Nat) (k : Nat) : Bool :=
   n + k == k + n
+
+-- 5. Monads
+
+def first (xs : List α) : Option α :=
+  xs[0]?
+
+def firstThird (xs : List α) : Option (α × α) :=
+  match xs[0]? with
+  | none => none
+  | some first =>
+    match xs[2]? with
+    | none => none
+    | some third => some (first, third)
+
+-- getting gross now
+def firstThirdFifth (xs : List α) : Option (α × α × α) :=
+  match xs[0]? with
+  | none => none
+  | some first =>
+    match xs[2]? with
+    | none => none
+    | some third =>
+      match xs[4]? with
+      | none => none
+      | some fifth => some (first, third, fifth)
+
+-- oh no
+def firstThirdFifthSeventh (xs : List α) : Option (α × α × α × α) :=
+  match xs[0]? with
+  | none => none
+  | some first =>
+    match xs[2]? with
+    | none => none
+    | some third =>
+      match xs[4]? with
+      | none => none
+      | some fifth =>
+        match xs[6]? with
+        | none => none
+        | some seventh => some (first, third, fifth, seventh)
+
+-- We can extract a common pattern
+def andThen (opt : Option α) (next : α → Option β) : Option β :=
+  match opt with
+  | none => none
+  | some x => next x
+
+def firstThird₂ (xs : List α) : Option (α × α) :=
+  andThen xs[0]? fun first => -- it can be helpful to remove parens
+  andThen xs[2]? fun third =>
+  some (first, third)
+
+infixl:55 " ~~> " => andThen
+
+def firstThirdInfix (xs : List α) : Option (α × α) :=
+  xs[0]? ~~> fun first =>
+  xs[2]? ~~> fun third =>
+  some (first, third)
+
+def firstThirdFifthSeventh₂ (xs : List α) : Option (α × α × α × α) :=
+  xs[0]? ~~> fun first =>
+  xs[2]? ~~> fun third =>
+  xs[4]? ~~> fun fifth =>
+  xs[6]? ~~> fun seventh =>
+  some (first, third, fifth, seventh)
+
+inductive Except₂ (ε : Type) (α : Type) where
+  | error : ε → Except₂ ε α
+  | ok : α → Except₂ ε α
+deriving BEq, Hashable, Repr
+
+def get (xs : List α) (i : Nat) : Except₂ String α :=
+  match xs.get? i with
+  | none => Except₂.error s!"Index {i} not found (maximum is {xs.length - 1})"
+  | some x => Except₂.ok x
+
+def ediblePlants : List String :=
+  ["Apple", "Banana", "Carrot", "Dandelion"]
+
+#eval get ediblePlants 2
+#eval get ediblePlants 5
+
+def firstε (xs : List α) : Except₂ String α :=
+  get xs 0
+
+-- oh brother
+def firstThirdε (xs : List α) : Except₂ String (α × α) :=
+  match get xs 0 with
+  | Except₂.error e => Except₂.error e
+  | Except₂.ok first =>
+    match get xs 2 with
+    | Except₂.error e => Except₂.error e
+    | Except₂.ok third => Except₂.ok (first, third)
+
+def andThenε (attempt : Except₂ ε α) (next : α → Except₂ ε β) : Except₂ ε β :=
+  match attempt with
+  | Except₂.error e => Except₂.error e
+  | Except₂.ok x => next x
+
+def firstThirdε₂ (xs : List α) : Except₂ String (α × α) :=
+  andThenε (get xs 0) fun first =>
+  andThenε (get xs 2) fun third =>
+  Except₂.ok (first, third)
+
+def isEven (i : Int) : Bool :=
+  i % 2 == 0
+
+def sumAndFindEvens : List Int → List Int × Int
+  | [] => ([], 0)
+  | i :: is =>
+    let (moreEven, sum) := sumAndFindEvens is
+    (if isEven i then i :: moreEven else moreEven, sum + i)
+
+def inorderSum : BinTree Int → List Int × Int
+  | BinTree.leaf => ([], 0)
+  | BinTree.branch l x r =>
+    let (leftVisited, leftSum) := inorderSum l
+    let (hereVisited, hereSum) := ([x], x)
+    let (rightVisited, rightSum) := inorderSum r
+    (leftVisited ++ hereVisited ++ rightVisited, leftSum + hereSum + rightSum)
+
+structure WithLog (logged : Type) (α : Type) where
+  log : List logged
+  val : α
+
+def andThenL (result : WithLog α β) (next : β → WithLog α γ) : WithLog α γ :=
+  let { log := thisOut, val := thisRes } := result
+  let { log := nextOut, val := nextRes } := next thisRes
+  { log := thisOut ++ nextOut, val := nextRes }
+
+def ok (x : β) : WithLog α β :=
+  { log := [], val := x }
+
+def save (data : α) : WithLog α Unit :=
+  { log := [data], val := () }
+
+def sumAndFindEvensL : List Int → WithLog Int Int
+  | [] => ok 0
+  | i :: is =>
+    andThenL (if isEven i then save i else ok ()) fun () =>
+    andThenL (sumAndFindEvensL is) fun sum =>
+    ok (i + sum)
+
+def inorderSumL : BinTree Int → WithLog Int Int
+  | BinTree.leaf => ok 0
+  | BinTree.branch l x r =>
+    andThenL (inorderSumL l) fun leftSum =>
+    andThenL (save x) fun () =>
+    andThenL (inorderSumL r) fun rightSum =>
+    ok (leftSum + x + rightSum)
+
+infixl:55 " ~~>> " => andThenL
+
+def sumAndFindEvensL₂ : List Int → WithLog Int Int
+  | [] => ok 0
+  | i :: is =>
+    (if isEven i then save i else ok ()) ~~>> fun () =>
+    sumAndFindEvensL₂ is ~~>> fun sum =>
+    ok (i + sum)
+
+def inorderSumL₂ : BinTree Int → WithLog Int Int
+  | BinTree.leaf => ok 0
+  | BinTree.branch l x r =>
+    inorderSumL₂ l ~~>> fun leftSum =>
+    save x ~~>> fun () =>
+    inorderSumL₂ r ~~>> fun rightSum =>
+    ok (leftSum + x + rightSum)
+
+def number (t : BinTree α) : BinTree (Nat × α) :=
+  let rec helper (n : Nat) : BinTree α → (Nat × BinTree (Nat × α))
+    | BinTree.leaf => (n, BinTree.leaf)
+    | BinTree.branch left x right =>
+      let (k, numberedLeft) := helper n left
+      let (i, numberedRight) := helper (k + 1) right
+      (i, BinTree.branch numberedLeft (k, x) numberedRight)
+    (helper 0 t).snd
+
+def State (σ : Type) (α : Type) := σ → σ × α
+
+def okσ (x : α) : State σ α :=
+  fun s => (s, x)
+
+def getσ : State σ σ :=
+  fun s => (s, s)
+
+def set (s : σ) : State σ Unit :=
+  fun _ => (s, ())
+
+def andThenσ (first : State σ α) (next : α → State σ β) : State σ β :=
+  fun s =>
+    let (s', x) := first s
+    next x s'
+
+infixl:55 " ~~>σ " => andThenσ
+
+def numberσ (t : BinTree α) : BinTree (Nat × α) :=
+  let rec helper : BinTree α → State Nat (BinTree (Nat × α))
+    | BinTree.leaf => okσ BinTree.leaf
+    | BinTree.branch left x right =>
+      helper left ~~>σ fun numberedLeft =>
+      getσ ~~>σ fun k =>
+      set (k + 1) ~~>σ fun () =>
+      helper right ~~>σ fun numberedRight =>
+      okσ (BinTree.branch numberedLeft (k, x) numberedRight)
+    (helper t 0).snd
