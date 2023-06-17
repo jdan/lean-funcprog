@@ -1245,3 +1245,322 @@ by
   intro h
   have h' := h Nat Nat (fun x => some (x + 1)) 0
   simp [bind] at h'
+
+inductive Expr (op : Type) where
+  | const : Int → Expr op
+  | prim : op → Expr op → Expr op → Expr op
+
+inductive Arith where
+  | plus
+  | minus
+  | times
+  | div
+
+open Expr in
+open Arith in
+def twoPlusThree : Expr Arith :=
+  prim plus (const 2) (const 3)
+
+-- 14 / (45 - 5 * 9)
+open Expr in
+open Arith in
+def expr : Expr Arith :=
+  prim div (const 14) (prim minus (const 45) (prim times (const 5) (const 9)))
+
+def evaluateOption : Expr Arith → Option Int
+  | Expr.const i => pure i
+  | Expr.prim p e1 e2 =>
+    evaluateOption e1 >>= fun v1 =>
+    evaluateOption e2 >>= fun v2 =>
+    match p with
+    | Arith.plus => pure (v1 + v2)
+    | Arith.minus => pure (v1 - v2)
+    | Arith.times => pure (v1 * v2)
+    | Arith.div =>
+      if v2 == 0 then none
+      else pure (v1 / v2)
+
+-- However, the function mixes two concerns: evaluating subexpressions and
+-- applying a binary operator to the results. It can be improved by splitting it
+-- into two functions:
+def applyPrimOption : Arith → Int → Int → Option Int
+  | Arith.plus, v1, v2 => pure (v1 + v2)
+  | Arith.minus, v1, v2 => pure (v1 - v2)
+  | Arith.times, v1, v2 => pure (v1 * v2)
+  | Arith.div, v1, v2 =>
+    if v2 == 0 then none
+    else pure (v1 / v2)
+
+def evaluateOption₂ : Expr Arith → Option Int
+  | Expr.const i => pure i
+  | Expr.prim p e1 e2 =>
+    evaluateOption₂ e1 >>= fun v1 =>
+    evaluateOption₂ e2 >>= fun v2 =>
+    applyPrimOption p v1 v2
+
+def applyPrimExcept : Arith → Int → Int → Except String Int
+  | Arith.plus, v1, v2 => pure (v1 + v2)
+  | Arith.minus, v1, v2 => pure (v1 - v2)
+  | Arith.times, v1, v2 => pure (v1 * v2)
+  | Arith.div, v1, v2 =>
+    if v2 == 0 then Except.error s!"Tried to divide {v1} by zero"
+    else pure (v1 / v2)
+
+def evaluateExcept : Expr Arith → Except String Int
+  | Expr.const i => pure i
+  | Expr.prim p e1 e2 =>
+    evaluateExcept e1 >>= fun v1 =>
+    evaluateExcept e2 >>= fun v2 =>
+    applyPrimExcept p v1 v2
+
+def evaluateM [Monad m] (applyPrim : Arith → Int → Int → m Int) : Expr Arith → m Int
+  | Expr.const i => pure i
+  | Expr.prim p e1 e2 =>
+    evaluateM applyPrim e1 >>= fun v1 =>
+    evaluateM applyPrim e2 >>= fun v2 =>
+    applyPrim p v1 v2
+
+#eval evaluateM applyPrimOption expr
+#eval evaluateM applyPrimExcept expr
+
+-- The functions applyPrimOption and applyPrimExcept differ only in their
+-- treatment of division, which can be extracted into another parameter to the
+-- evaluator:
+def applyDivOption (x : Int) (y : Int) : Option Int :=
+  if y == 0 then none
+  else pure (x / y)
+
+def applyDivExcept (x : Int) (y : Int) : Except String Int :=
+  if y == 0 then Except.error s!"Tried to divide {x} by zero"
+  else pure (x / y)
+
+def applyPrim [Monad m] (applyDiv : Int → Int → m Int) : Arith → Int → Int → m Int
+  | Arith.plus, v1, v2 => pure (v1 + v2)
+  | Arith.minus, v1, v2 => pure (v1 - v2)
+  | Arith.times, v1, v2 => pure (v1 * v2)
+  | Arith.div, v1, v2 => applyDiv v1 v2
+
+def evaluateM₂ [Monad m] (applyDiv : Int → Int → m Int) : Expr Arith → m Int
+  | Expr.const i => pure i
+  | Expr.prim p e1 e2 =>
+    evaluateM₂ applyDiv e1 >>= fun v1 =>
+    evaluateM₂ applyDiv e2 >>= fun v2 =>
+    applyPrim applyDiv p v1 v2
+
+#eval evaluateM₂ applyDivOption expr
+#eval evaluateM₂ applyDivExcept expr
+
+inductive Prim (special : Type) where
+  | plus
+  | minus
+  | times
+  | other : special → Prim special
+
+inductive CanFail where
+  | div
+
+def divOption : CanFail → Int → Int → Option Int
+  | CanFail.div, x, y =>
+    if y == 0 then none
+    else pure (x / y)
+
+def divExcept : CanFail → Int → Int → Except String Int
+  | CanFail.div, x, y =>
+    if y == 0 then Except.error s!"Tried to divide {x} by zero"
+    else pure (x / y)
+
+def applyPrim₂ [Monad m] (applySpecial : special → Int → Int → m Int) : Prim special → Int → Int → m Int
+  | Prim.plus, v1, v2 => pure (v1 + v2)
+  | Prim.minus, v1, v2 => pure (v1 - v2)
+  | Prim.times, v1, v2 => pure (v1 * v2)
+  | Prim.other op, v1, v2 => applySpecial op v1 v2
+
+def evaluateM₃ [Monad m] (applySpecial : special → Int → Int → m Int) : Expr (Prim special) → m Int
+  | Expr.const i => pure i
+  | Expr.prim p e1 e2 =>
+    evaluateM₃ applySpecial e1 >>= fun v1 =>
+    evaluateM₃ applySpecial e2 >>= fun v2 =>
+    applyPrim₂ applySpecial p v1 v2
+
+def applyEmpty [Monad m] (op : Empty) (_ : Int) (_ : Int) : m Int :=
+  nomatch op
+
+-- No effects whatsoever
+open Expr Prim in
+#eval evaluateM₃ (m := Id) applyEmpty (prim plus (const 2) (const 3))
+
+inductive Many (α : Type) where
+  | none : Many α
+  | more : α → (Unit → Many α) → Many α
+
+def Many.one (x : α) : Many α :=
+  Many.more x fun () => Many.none
+
+def Many.union : Many α → Many α → Many α
+  | Many.none, ys => ys
+  | Many.more x xs, ys => Many.more x (fun () => union (xs ()) ys)
+
+-- convenience
+def Many.fromList : List α → Many α
+  | [] => Many.none
+  | x :: xs => Many.more x (fun () => fromList xs)
+
+def Many.take : Nat → Many α → List α
+  | 0, _ => []
+  | _ + 1, Many.none => []
+  | n + 1, Many.more x xs => x :: take n (xs ())
+
+def Many.takeAll : Many α → List α
+  | Many.none => []
+  | Many.more x xs => x :: takeAll (xs ())
+
+def Many.bind : Many α → (α → Many β) → Many β
+  | Many.none, _ => Many.none
+  | Many.more x xs, f => union (f x) (bind (xs ()) f)
+
+theorem manyIsMonad :
+  ∀ (v : α) (f : α → Many β),
+  Many.bind (Many.one v) f = f v
+:= by
+  intros v f
+  simp [Many.one, Many.bind, Many.union]
+  cases f v
+  simp [Many.union]
+  simp [Many.union]
+  sorry
+
+instance : Monad Many where
+  pure := Many.one
+  bind := Many.bind
+
+def addsTo (goal : Nat) : List Nat → Many (List Nat)
+  | [] => if goal == 0 then pure []
+          else Many.none
+  | x :: xs =>
+    if x > goal then
+      addsTo goal xs
+    else
+      (addsTo goal xs).union
+        (addsTo (goal - x) xs >>= fun answer =>
+         pure (x :: answer))
+
+inductive NeedsSearch
+  | div
+  | choose
+
+def applySearch : NeedsSearch → Int → Int → Many Int
+  | NeedsSearch.choose, x, y => Many.fromList [x, y]
+  | NeedsSearch.div, x, y =>
+    if y == 0 then Many.none
+    else Many.one (x / y)
+
+open Expr Prim NeedsSearch
+#eval (evaluateM₃ applySearch (prim plus (const 1) (prim (other choose) (const 2) (const 5)))).takeAll
+
+-- The Reader monad (ρ)
+def Reader (ρ : Type) (α : Type) : Type := ρ → α
+def read : Reader ρ ρ := fun env => env
+
+def Reader.pure (x : α) : Reader ρ α := fun _ => x
+
+def Reader.bind {ρ : Type} {α : Type} {β : Type}
+  (result : Reader ρ α) (next : α → Reader ρ β) : ρ → β :=
+  -- Because the return type is a function, a good first step is to wrap a fun
+  -- around the underscore:
+  --
+  --   fun env => _
+  --
+  -- The only thing that can produce a β is next
+  --
+  --   fun env => next _ _
+  --
+  -- Only one thing in the context can produce an α
+  fun env => next (result env) env
+
+instance : Monad (Reader ρ) where
+  pure x := fun _ => x
+  bind x f := fun env => f (x env) env
+
+abbrev Env : Type := List (String × (Int → Int → Int))
+
+def exampleEnv : Env := [("max", max), ("mod", (· % ·))]
+
+def applyPrimReader (op : String) (x : Int) (y : Int) : Reader Env Int :=
+  read >>= fun env =>
+  match env.lookup op with
+  | none => pure 0
+  | some f => pure (f x y)
+
+open Expr Prim in
+#eval evaluateM₃ applyPrimReader (prim (other "mod") (const 5) (const 3)) exampleEnv
+
+def ReaderOption (ρ : Type) (α : Type) : Type := ρ → Option α
+
+def ReaderOption.read : ReaderOption ρ ρ := fun env => some env
+def ReaderOption.pure (x : α) : ReaderOption ρ α := fun _ => some x
+def ReaderOption.bind (x : ReaderOption ρ α) (f : α → ReaderOption ρ β) : ReaderOption ρ β :=
+  fun env =>
+    match x env with
+    | none => none
+    | some x => f x env
+
+instance : Monad (ReaderOption ρ) where
+  pure := ReaderOption.pure
+  bind := ReaderOption.bind
+
+def applyPrimReaderOption (op : String) (x : Int) (y : Int) : ReaderOption Env Int :=
+  ReaderOption.read >>= fun env =>
+  match env.lookup op with
+  | none => fun _ => none -- hmmmmmm
+  | some f => pure (f x y)
+
+open Expr Prim in
+#eval evaluateM₃ applyPrimReaderOption (prim (other "mod") (const 5) (const 3)) exampleEnv
+#eval evaluateM₃ applyPrimReaderOption (prim (other "cool") (const 5) (const 3)) []
+
+def ReaderExcept (ε : Type) (ρ : Type) (α : Type) : Type := ρ → Except ε α
+def ReaderExcept.read : ReaderExcept ε ρ ρ := fun env => Except.ok env
+def ReaderExcept.pure (x : α) : ReaderExcept ε ρ α := fun _ => Except.ok x
+def ReaderExcept.bind (x : ReaderExcept ε ρ α) (f : α → ReaderExcept ε ρ β) : ReaderExcept ε ρ β :=
+  fun env =>
+    match x env with
+    | Except.error e => Except.error e
+    | Except.ok x => f x env
+
+instance : Monad (ReaderExcept ε ρ) where
+  pure := ReaderExcept.pure
+  bind := ReaderExcept.bind
+
+def applyPrimReaderExcept (op : String) (x : Int) (y : Int) : ReaderExcept String Env Int :=
+  ReaderExcept.read >>= fun env =>
+  match env.lookup op with
+  | none => fun _ => Except.error "unknown operation"
+  | some f => pure (f x y)
+
+open Expr Prim in
+#eval evaluateM₃ applyPrimReaderExcept (prim (other "mod") (const 5) (const 3)) exampleEnv
+#eval evaluateM₃ applyPrimReaderExcept (prim (other "cool") (const 5) (const 3)) []
+
+inductive ToTrace (α : Type) : Type where
+  | trace : α → ToTrace α
+
+instance : Monad (WithLog logged) where
+  pure x := ⟨[], x⟩
+  bind x f :=
+    let ⟨logs₁, x⟩ := x
+    let ⟨logs₂, y⟩ := f x
+    ⟨logs₁ ++ logs₂, y⟩
+
+def applyTraced (op : ToTrace (Prim Empty)) (x y : Int) : WithLog (Prim Empty × Int × Int) Int :=
+  match op with
+  -- there must be a way to use applyEmpty...
+  | ToTrace.trace Prim.plus => ⟨ [(Prim.plus, x, y)], x + y ⟩
+  | ToTrace.trace Prim.times => ⟨ [(Prim.times, x, y)], x * y ⟩
+  | ToTrace.trace Prim.minus => ⟨ [(Prim.minus, x, y)], x - y ⟩
+
+deriving instance Repr for WithLog
+deriving instance Repr for Empty
+deriving instance Repr for Prim
+
+open Expr Prim ToTrace in
+#eval evaluateM₃ applyTraced (prim (other (trace times)) (prim (other (trace plus)) (const 1) (const 2)) (prim (other (trace minus)) (const 3) (const 4)))
