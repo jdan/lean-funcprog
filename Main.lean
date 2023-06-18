@@ -1585,3 +1585,48 @@ def evaluateM₅ [Monad m] (applySpecial : special → Int → Int → m Int) : 
     applyPrim₂ applySpecial p
       (← evaluateM₄ applySpecial e1)
       (← evaluateM₄ applySpecial e2)
+
+#print Nat
+
+def BinTree.mirror : BinTree α → BinTree α
+  | BinTree.leaf => BinTree.leaf
+  | BinTree.branch l x r => BinTree.branch (mirror r) x (mirror l)
+
+-- leading dot notation
+def BinTree.mirror₂ : BinTree α → BinTree α
+  | .leaf => .leaf
+  | .branch l x r => .branch (mirror₂ r) x (mirror₂ l)
+
+inductive Weekday where
+  | monday
+  | tuesday
+  | wednesday
+  | thursday
+  | friday
+  | saturday
+  | sunday
+  deriving Repr
+
+def Weekday.isWeekend (day : Weekday) : Bool :=
+  match day with
+  | Weekday.saturday => true
+  | Weekday.sunday => true
+  | _ => false
+
+-- leading dot
+def Weekday.isWeekend₂ (day : Weekday) : Bool :=
+  match day with
+  | .saturday => true
+  | .sunday => true
+  | _ => false
+
+-- condensed |
+def Weekday.isWeekend₃ (day : Weekday) : Bool :=
+  match day with
+  | .saturday | .sunday => true
+  | _ => false
+
+-- point free
+def Weekday.isWeekend₄ : Weekday → Bool
+  | .saturday | .sunday => true
+  | _ => false
