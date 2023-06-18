@@ -1564,3 +1564,24 @@ deriving instance Repr for Prim
 
 open Expr Prim ToTrace in
 #eval evaluateM₃ applyTraced (prim (other (trace times)) (prim (other (trace plus)) (const 1) (const 2)) (prim (other (trace minus)) (const 3) (const 4)))
+
+def firstThirdFifthSeventhDo [Monad m] (lookup : List α → Nat → m α) (xs : List α) : m (α × α × α × α) :=
+  do let x₁ ← lookup xs 0
+     let x₃ ← lookup xs 2
+     let x₅ ← lookup xs 4
+     let x₇ ← lookup xs 6
+     pure (x₁, x₃, x₅, x₇)
+
+def evaluateM₄ [Monad m] (applySpecial : special → Int → Int → m Int) : Expr (Prim special) → m Int
+  | Expr.const i => pure i
+  | Expr.prim p e1 e2 => do
+    let v1 ← evaluateM₄ applySpecial e1
+    let v2 ← evaluateM₄ applySpecial e2
+    applyPrim₂ applySpecial p v1 v2
+
+def evaluateM₅ [Monad m] (applySpecial : special → Int → Int → m Int) : Expr (Prim special) → m Int
+  | Expr.const i => pure i
+  | Expr.prim p e1 e2 => do
+    applyPrim₂ applySpecial p
+      (← evaluateM₄ applySpecial e1)
+      (← evaluateM₄ applySpecial e2)
