@@ -1914,3 +1914,46 @@ def evenDivisors (n : Nat) : Many Nat := do
 #eval (evenDivisors 20).takeAll
 
 -- Skipping the exercises, this chapter is pretty gnarly
+
+#check Prop
+-- Prop : Type
+#check Type
+-- Type : Type 1
+#check Type 1
+-- Type 1 : Type 2
+
+-- inductive MyList₀ (α : Type 1) : Type 1 where
+--   | nil : MyList₀ α
+--   | cons : α → MyList₀ α → MyList₀ α
+
+-- def myListOfNat₀ : MyList₀ (Type 1) :=
+--   .cons Nat .nil
+
+inductive MyList₁ (α : Type u) : Type u where
+  | nil : MyList₁ α
+  | cons : α → MyList₁ α → MyList₁ α
+
+def myListOfNumbers : MyList₁ Nat :=
+  .cons 1 .nil
+
+def myListOfNat : MyList₁ Type :=
+  .cons Nat .nil
+
+def myListOfList : MyList₁ (Type → Type) :=
+  .cons MyList₁ .nil
+
+inductive Sum₀ (α : Type u) (β : Type u) : Type u where
+  | inl : α → Sum₀ α β
+  | inr : β → Sum₀ α β
+
+def stringOrNat : Sum₀ String Nat := .inl "Hello"
+def typeOrType : Sum₀ Type Type := .inr Nat
+
+-- Both types must be in the same universe
+-- def stringOrType : Sum₀ String Type := .inr Nat
+
+inductive Sum₁ (α : Type u) (β : Type v) : Type (max u v) where
+  | inl : α → Sum₁ α β
+  | inr : β → Sum₁ α β
+
+def stringOrType : Sum₁ String Type := .inr Nat
