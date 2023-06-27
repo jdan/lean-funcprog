@@ -324,7 +324,7 @@ def main₅ : IO Unit := do
 -- B
 -- Is 0!
 
-def main := main₅
+-- def main := main₅
 
 -- Chapter 3 --
 def onePlusOneIsTwo : 1 + 1 = 2 := rfl
@@ -1957,3 +1957,208 @@ inductive Sum₁ (α : Type u) (β : Type v) : Type (max u v) where
   | inr : β → Sum₁ α β
 
 def stringOrType : Sum₁ String Type := .inr Nat
+
+-- Chapter 7: Monad Transformers
+
+structure Config where
+  useASCII : Bool := false
+  currentPrefix : String := ""
+
+def Config.preFile (cfg : Config) :=
+  if cfg.useASCII then "|--" else "├──"
+
+def Config.preDir (cfg : Config) :=
+  if cfg.useASCII then "|  " else "│  "
+
+def Config.fileName (cfg : Config) (file : String) : String :=
+  s!"{cfg.currentPrefix}{cfg.preFile} {file}"
+
+def Config.dirName (cfg : Config) (dir : String) : String :=
+  s!"{cfg.currentPrefix}{cfg.preFile} {dir}/"
+
+def Config.inDirectory (cfg : Config) : Config :=
+  { cfg with currentPrefix := cfg.preDir ++ " " ++ cfg.currentPrefix }
+
+-- While this implementation of doug works, manually passing the configuration
+-- around is verbose and error-prone. The type system will not catch it if the
+-- wrong configuration is passed downwards, for instance.
+--
+-- A reader effect ensures that the same configuration is passed to all
+-- recursive calls, unless it is manually overridden, and it helps make the code
+-- less verbose.
+abbrev ConfigIO (α : Type) : Type := ReaderT Config IO α
+
+def showFileName (file : String) : ConfigIO Unit := do
+  IO.println s!"{(← read).currentPrefix} {file}"
+
+def showDirName (dir : String) : ConfigIO Unit := do
+  IO.println s!"{(← read).currentPrefix} {dir}/"
+
+def ConfigIO.run (action : ConfigIO α) (cfg : Config) : IO α :=
+  action cfg
+
+def usage : String :=
+  "Usage: doug [--ascii]
+Options:
+\t--ascii\tUse ASCII characters to display the directory structure"
+
+def configFromArgs : List String → Option Config
+  | [] => some {}
+  | ["--ascii"] => some { useASCII := true }
+  | _ => none
+
+inductive Entry where
+  | file : String → Entry
+  | dir : String → Entry
+
+def toEntry (path : System.FilePath) : IO (Option Entry) := do
+  match path.components.getLast? with
+  | none => pure (some (.dir ""))
+  | some "." | some ".." => pure none
+  | some name =>
+    pure (some (if (← path.isDir) then .dir name else .file name))
+
+
+def doList [Applicative f] : List α → (α → f Unit) → f Unit
+  | [], _ => pure ()
+  | x :: xs, action =>
+    action x *>
+    doList xs action
+
+partial def dirTree (path : System.FilePath) : ConfigIO Unit := do
+  match ← toEntry path with
+    | none => pure ()
+    | some (.file name) => showFileName name
+    | some (.dir name) =>
+      showDirName name
+      let contents ← path.readDir
+      withReader (·.inDirectory)
+        (doList contents.toList fun d =>
+          dirTree d.path)
+
+
+def main₆ (args : List String) : IO UInt32 := do
+  match configFromArgs args with
+  | some config =>
+    (dirTree (← IO.currentDir)).run config
+    pure 0
+  | none =>
+    -- IO.eprintln s!"Didn't understand argument(s) {" ".separate args}\n"
+    IO.eprintln s!"Didn't understand argument(s)\n"
+    IO.eprintln usage
+    pure 1
+
+-- Wrapping ordinary IO actions in runIO is noisy and distracts from the flow of
+-- the program
+
+-- def ReaderT (ρ : Type u) (m : Type u → Type v) (α : Type u) : Type (max u v) :=
+--   ρ → m α
+
+-- def read [Monad m] : ReaderT ρ m ρ :=
+--   fun r => pure r
+
+#check read
+#check MonadReader
+
+-- The next step is to remove runIO
+
+#check MonadLift
+
+-- In the case of Option, failure can be added to a monad by having it contain
+-- values of type Option α where it would otherwise contain values of type α.
+-- For example, IO (Option α) represents IO actions that don't always return a
+-- value of type α.
+
+def getSomeInput : OptionT IO String := do
+  let input ← (← IO.getStdin).getLine
+  let trimmed := input.trim
+  if trimmed == "" then
+    failure
+  else
+    pure trimmed
+
+inductive Err where
+  | divByZero
+  | notANumber : String → Err
+
+def divBackend [Monad m] [MonadExcept Err m] (n k : Int) : m Int :=
+  if k == 0 then
+    throw .divByZero
+  else
+    pure (n / k)
+
+def asNumber [Monad m] [MonadExcept Err m] (s : String) : m Int :=
+  match s.toInt? with
+  | none => throw (.notANumber s)
+  | some i => pure i
+
+def divFrontend [Monad m] [MonadExcept Err m] (n k : String) : m String :=
+  tryCatch (do pure (toString (← divBackend (← asNumber n) (← asNumber k))))
+    fun
+    | .divByZero => pure "Division by zero"
+    | .notANumber s => pure s!"Not a number: \"{s}\""
+
+-- throwing and catching is so common that try and catch can be used
+
+def divFrontend₂ [Monad m] [MonadExcept Err m] (n k : String) : m String :=
+  try
+    pure (toString (← divBackend (← asNumber n) (← asNumber k)))
+  catch
+    | .divByZero => pure "Division by zero"
+    | .notANumber s => pure s!"Not a number: \"{s}\""
+
+structure LetterCounts where
+  vowels : Nat
+  consonants : Nat
+deriving Repr
+
+inductive Err₂ where
+  | notALetter : Char → Err₂
+deriving Repr
+
+def vowels :=
+  let lowerVowels := "aeiuoy"
+  lowerVowels ++ lowerVowels.map (·.toUpper)
+
+def consonants :=
+  let lowerConsonants := "bcdfghjklmnpqrstvwxz"
+  lowerConsonants ++ lowerConsonants.map (·.toUpper )
+
+def countLetters (str : String) : StateT LetterCounts (Except Err₂) Unit :=
+  let rec loop (chars : List Char) := do
+    match chars with
+    | [] => pure ()
+    | c :: cs =>
+      let st ← get
+      let st' ←
+        if c.isAlpha then
+          if vowels.contains c then
+            pure {st with vowels := st.vowels + 1}
+          else if consonants.contains c then
+            pure {st with consonants := st.consonants + 1}
+          else -- modified or non-English letter
+            pure st
+        else throw (.notALetter c)
+      set st'
+      loop cs
+  loop str.toList
+
+def countLetters₂ (str : String) : StateT LetterCounts (Except Err₂) Unit :=
+  let rec loop (chars : List Char) := do
+    match chars with
+    | [] => pure ()
+    | c :: cs =>
+      if c.isAlpha then
+        if vowels.contains c then
+          modify fun st => {st with vowels := st.vowels + 1}
+        else if consonants.contains c then
+          modify fun st => {st with consonants := st.consonants + 1}
+        else -- modified or non-English letter
+          pure ()
+      else throw (.notALetter c)
+      loop cs
+  loop str.toList
+
+#check modify
+#check modifyGet
+
